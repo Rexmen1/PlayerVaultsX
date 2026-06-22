@@ -1,7 +1,6 @@
 package com.drtshock.playervaults.vaultmanagement;
 
 import com.drtshock.playervaults.PlayerVaults;
-import dev.kitteh.cardboardbox.CardboardBox;
 import org.bukkit.Material;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -22,8 +21,12 @@ public class CardboardBoxSerialization {
     }
 
     public static String toStorage(Inventory inventory, String target) {
+        return toStorage(VaultNavigation.extractStorageContents(inventory), target);
+    }
+
+    public static String toStorage(ItemStack[] contents, String target) {
         try {
-            return Base64.getMimeEncoder().encodeToString(writeInventory(inventory.getContents()));
+            return Base64.getMimeEncoder().encodeToString(writeInventory(contents));
         } catch (Exception e) {
             throw PlayerVaults.getInstance().addException(new IllegalStateException("Failed to save items for " + target, e));
         }
@@ -47,7 +50,7 @@ public class CardboardBoxSerialization {
                 byte[] itemBytes = new byte[len];
                 input.readFully(itemBytes);
                 try {
-                    contents[i] = CardboardBox.deserializeItem(itemBytes);
+                    contents[i] = ItemSerialization.deserializeItem(itemBytes);
                 } catch (Exception e) {
                     if (e.getMessage().startsWith("Cardboard Box")) {
                         throw e;
@@ -76,7 +79,7 @@ public class CardboardBoxSerialization {
         DataOutputStream out = new DataOutputStream(bytes);
         out.writeInt(contents.length);
         for (ItemStack content : contents) {
-            byte[] item = CardboardBox.serializeItem(content);
+            byte[] item = ItemSerialization.serializeItem(content);
             out.writeInt(item.length);
             out.write(item);
         }

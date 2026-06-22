@@ -111,11 +111,11 @@ public class VaultOperations {
      */
     public static int getMaxVaultSize(OfflinePlayer player) {
         if (player == null || !player.isOnline()) {
-            return 6 * 9;
+            return PlayerVaults.getInstance().getDefaultVaultSize();
         }
         for (int i = 6; i != 0; i--) {
             if (player.getPlayer().hasPermission(Permission.size(i))) {
-                return i * 9;
+                return VaultNavigation.applyMinimumRows(i) * 9;
             }
         }
         return PlayerVaults.getInstance().getDefaultVaultSize();
@@ -237,7 +237,7 @@ public class VaultOperations {
             PlayerVaults.getInstance().getTL().mustBeNumber().title().send(player);
         }
 
-        Inventory inv = VaultManager.getInstance().loadOtherVault(vaultOwner, number, getMaxVaultSize(vaultOwner));
+        Inventory inv = VaultManager.getInstance().loadOtherVault(player, vaultOwner, number, getMaxVaultSize(vaultOwner));
         String name = vaultOwner;
         try {
             OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(UUID.fromString(vaultOwner));
@@ -264,7 +264,7 @@ public class VaultOperations {
             // Need to set ViewInfo for a third party vault for the opening player.
             VaultViewInfo info = new VaultViewInfo(vaultOwner, number);
             PlayerVaults.getInstance().getInVault().put(player.getUniqueId().toString(), info);
-            PlayerVaults.getInstance().getOpenInventories().put(player.getUniqueId().toString(), inv);
+            PlayerVaults.getInstance().getOpenInventories().put(info.toString(), inv);
             return true;
         }
 
@@ -393,5 +393,67 @@ public class VaultOperations {
             }
         }, 20 * secondsToLive + 1);
         return vaultCount;
+    }
+
+    /**
+     * Switch the player to another vault while keeping the GUI open.
+     *
+     * @param player The player viewing the vault.
+     * @param info The current vault view info.
+     * @param targetNumber The vault number to switch to.
+     * @return true if the switch succeeded.
+     */
+    public static boolean switchVault(Player player, VaultViewInfo info, int targetNumber) {
+        if (isLocked() || targetNumber == info.getNumber() || targetNumber < 1) {
+            return false;
+        }
+        if (player.isSleeping() || player.isDead() || !player.isOnline()) {
+            return false;
+        }
+
+        boolean ownVault = player.getUniqueId().toString().equals(info.getVaultName());
+        if (ownVault) {
+            if (!checkPerms(player, targetNumber)) {
+                PlayerVaults.getInstance().getTL().noPerms().title().send(player);
+                return false;
+            }
+        } else if (!player.hasPermission(Permission.ADMIN)) {
+            PlayerVaults.getInstance().getTL().noPerms().title().send(player);
+            return false;
+        }
+
+        Inventory current = player.getOpenInventory().getTopInventory();
+        if (!(current.getHolder() instanceof VaultHolder)) {
+            return false;
+        }
+
+        VaultManager.getInstance().saveVault(current, info.getVaultName(), info.getNumber());
+        PlayerVaults.getInstance().getOpenInventories().remove(info.toString());
+
+        VaultViewInfo newInfo = new VaultViewInfo(info.getVaultName(), targetNumber);
+        Inventory inv;
+        if (ownVault) {
+            inv = VaultManager.getInstance().loadOwnVault(player, targetNumber, getMaxVaultSize(player));
+        } else {
+            inv = VaultManager.getInstance().loadOtherVault(player, info.getVaultName(), targetNumber, getMaxVaultSize(info.getVaultName()));
+            if (inv == null) {
+                PlayerVaults.getInstance().getTL().vaultDoesNotExist().title().send(player);
+                return false;
+            }
+        }
+
+        if (inv == null) {
+            return false;
+        }
+
+        player.openInventory(inv);
+        if (player.getOpenInventory().getTopInventory() instanceof CraftingInventory || player.getOpenInventory().getTopInventory() == null) {
+            PlayerVaults.debug(String.format("Cancelled switching vault %d for %s from an outside source.", targetNumber, player.getName()));
+            return false;
+        }
+
+        PlayerVaults.getInstance().getInVault().put(player.getUniqueId().toString(), newInfo);
+        PlayerVaults.getInstance().getOpenInventories().put(newInfo.toString(), inv);
+        return true;
     }
 }

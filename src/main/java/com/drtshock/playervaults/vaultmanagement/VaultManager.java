@@ -69,7 +69,6 @@ public class VaultManager {
      */
     public void saveVault(Inventory inventory, String target, int number) {
         YamlConfiguration yaml = getPlayerVaultFile(target, true);
-        int size = VaultOperations.getMaxVaultSize(target);
         String serialized = CardboardBoxSerialization.toStorage(inventory, target);
         yaml.set(String.format(VAULTKEY, number), serialized);
         saveFileSync(target, yaml);
@@ -92,7 +91,9 @@ public class VaultManager {
         VaultViewInfo info = new VaultViewInfo(player.getUniqueId().toString(), number);
         if (PlayerVaults.getInstance().getOpenInventories().containsKey(info.toString())) {
             PlayerVaults.debug("Already open");
-            return PlayerVaults.getInstance().getOpenInventories().get(info.toString());
+            Inventory cached = PlayerVaults.getInstance().getOpenInventories().get(info.toString());
+            VaultNavigation.populateNavigationRow(cached, player, player.getUniqueId().toString(), number, true);
+            return cached;
         }
 
         YamlConfiguration playerFile = getPlayerVaultFile(player.getUniqueId().toString(), true);
@@ -101,9 +102,10 @@ public class VaultManager {
             PlayerVaults.debug("No vault matching number");
             Inventory inv = Bukkit.createInventory(vaultHolder, size, title);
             vaultHolder.setInventory(inv);
+            VaultNavigation.populateNavigationRow(inv, player, player.getUniqueId().toString(), number, true);
             return inv;
         } else {
-            return getInventory(vaultHolder, player.getUniqueId().toString(), playerFile, size, number, title);
+            return getInventory(vaultHolder, player.getUniqueId().toString(), playerFile, size, number, title, player, true, player.getUniqueId().toString());
         }
     }
 
@@ -113,7 +115,7 @@ public class VaultManager {
      * @param name The holder of the vault.
      * @param number The vault number.
      */
-    public Inventory loadOtherVault(String name, int number, int size) {
+    public Inventory loadOtherVault(Player viewer, String name, int number, int size) {
         if (size % 9 != 0) {
             size = PlayerVaults.getInstance().getDefaultVaultSize();
         }
@@ -137,9 +139,10 @@ public class VaultManager {
         if (PlayerVaults.getInstance().getOpenInventories().containsKey(info.toString())) {
             PlayerVaults.debug("Already open");
             inv = PlayerVaults.getInstance().getOpenInventories().get(info.toString());
+            VaultNavigation.populateNavigationRow(inv, viewer, name, number, false);
         } else {
             YamlConfiguration playerFile = getPlayerVaultFile(holder, true);
-            Inventory i = getInventory(vaultHolder, holder, playerFile, size, number, title);
+            Inventory i = getInventory(vaultHolder, holder, playerFile, size, number, title, viewer, false, name);
             if (i == null) {
                 return null;
             } else {
@@ -158,28 +161,31 @@ public class VaultManager {
      * @param number the vault number.
      * @return inventory if exists, otherwise null.
      */
-    private Inventory getInventory(InventoryHolder owner, String ownerName, YamlConfiguration playerFile, int size, int number, String title) {
+    private Inventory getInventory(InventoryHolder owner, String ownerName, YamlConfiguration playerFile, int size, int number, String title, Player viewer, boolean ownVault, String navOwner) {
         Inventory inventory = Bukkit.createInventory(owner, size, title);
+        int storageSize = VaultNavigation.getStorageSlotCount(size);
 
         String data = playerFile.getString(String.format(VAULTKEY, number));
         ItemStack[] deserialized = CardboardBoxSerialization.fromStorage(data, ownerName);
         if (deserialized == null) {
             PlayerVaults.debug("Loaded vault for " + ownerName + " as null");
+            if (viewer != null) {
+                VaultNavigation.populateNavigationRow(inventory, viewer, navOwner, number, ownVault);
+            }
             return inventory;
         }
 
         // Check if deserialized has more used slots than the limit here.
         // Happens on change of permission or if people used the broken version.
         // In this case, players will lose items.
-        if (deserialized.length > size) {
-            PlayerVaults.debug("Loaded vault for " + ownerName + " and got " + deserialized.length + " items for allowed size of " + size+". Attempting to rescue!");
-            for (ItemStack stack : deserialized) {
-                if (stack != null) {
-                    inventory.addItem(stack);
-                }
-            }
-        } else {
-            inventory.setContents(deserialized);
+        int limit = VaultNavigation.isEnabled() ? storageSize : size;
+        if (deserialized.length > limit) {
+            PlayerVaults.debug("Migrating vault for " + ownerName + " from " + deserialized.length + " saved slots to " + storageSize + " storage slots");
+        }
+        VaultStorageLoader.loadIntoInventory(inventory, deserialized, storageSize, viewer);
+
+        if (viewer != null) {
+            VaultNavigation.populateNavigationRow(inventory, viewer, navOwner, number, ownVault);
         }
 
         PlayerVaults.debug("Loaded vault");

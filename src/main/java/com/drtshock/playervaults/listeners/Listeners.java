@@ -24,6 +24,8 @@ import com.drtshock.playervaults.events.BlacklistedItemEvent;
 import com.drtshock.playervaults.util.Permission;
 import com.drtshock.playervaults.vaultmanagement.VaultHolder;
 import com.drtshock.playervaults.vaultmanagement.VaultManager;
+import com.drtshock.playervaults.vaultmanagement.VaultNavigation;
+import com.drtshock.playervaults.vaultmanagement.VaultOperations;
 import com.drtshock.playervaults.vaultmanagement.VaultViewInfo;
 import org.bukkit.Bukkit;
 import org.bukkit.enchantments.Enchantment;
@@ -48,6 +50,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -127,71 +130,101 @@ public class Listeners implements Listener {
         }
     }
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onClick(InventoryClickEvent event) {
-        if (!(event.getWhoClicked() instanceof Player)) {
+        if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
 
-        Player player = (Player) event.getWhoClicked();
+        VaultViewInfo info = PlayerVaults.getInstance().getInVault().get(player.getUniqueId().toString());
+        if (info == null) {
+            return;
+        }
+
+        Inventory top = event.getView().getTopInventory();
+        if (!(top.getHolder() instanceof VaultHolder)) {
+            return;
+        }
+
+        int rawSlot = event.getRawSlot();
+        if (VaultNavigation.isEnabled() && rawSlot < top.getSize() && VaultNavigation.isNavigationSlot(rawSlot, top.getSize())) {
+            event.setCancelled(true);
+            if (event.getClickedInventory() != top) {
+                return;
+            }
+            OptionalInt target = VaultNavigation.getTargetVault(event.getCurrentItem());
+            if (target.isEmpty()) {
+                return;
+            }
+            int targetVault = target.getAsInt();
+            Bukkit.getScheduler().runTask(this.plugin, () -> {
+                VaultViewInfo current = PlayerVaults.getInstance().getInVault().get(player.getUniqueId().toString());
+                if (current != null) {
+                    VaultOperations.switchVault(player, current, targetVault);
+                }
+            });
+            return;
+        }
 
         Inventory clickedInventory = event.getClickedInventory();
-        if (clickedInventory != null) {
-            VaultViewInfo info = PlayerVaults.getInstance().getInVault().get(player.getUniqueId().toString());
-            if (info != null) {
-                int num = info.getNumber();
-                String inventoryTitle = event.getView().getTitle();
-                String title = this.plugin.getVaultTitle(String.valueOf(num));
-                if (inventoryTitle.equalsIgnoreCase(title)) {
-                    ItemStack[] items = new ItemStack[2];
-                    items[0] = event.getCurrentItem();
-                    if (event.getHotbarButton() > -1 && event.getWhoClicked().getInventory().getItem(event.getHotbarButton()) != null) {
-                        items[1] = event.getWhoClicked().getInventory().getItem(event.getHotbarButton());
-                    }
-                    if (event.getClick().name().equals("SWAP_OFFHAND")) {
-                        items[1] = event.getWhoClicked().getInventory().getItemInOffHand();
-                    }
+        if (clickedInventory == top) {
+            if (!player.hasPermission(Permission.BYPASS_BLOCKED_ITEMS)) {
+                ItemStack[] items = new ItemStack[2];
+                items[0] = event.getCurrentItem();
+                if (event.getHotbarButton() > -1 && event.getWhoClicked().getInventory().getItem(event.getHotbarButton()) != null) {
+                    items[1] = event.getWhoClicked().getInventory().getItem(event.getHotbarButton());
+                }
+                if (event.getClick().name().equals("SWAP_OFFHAND")) {
+                    items[1] = event.getWhoClicked().getInventory().getItemInOffHand();
+                }
 
-                    if (!player.hasPermission(Permission.BYPASS_BLOCKED_ITEMS)) {
-                        for (ItemStack item : items) {
-                            if (item == null) {
-                                continue;
-                            }
-                            if (this.isBlocked(player, item, info)) {
-                                event.setCancelled(true);
-                                return;
-                            }
-                        }
+                for (ItemStack item : items) {
+                    if (item == null || VaultNavigation.isNavigationItem(item)) {
+                        continue;
+                    }
+                    if (this.isBlocked(player, item, info)) {
+                        event.setCancelled(true);
+                        return;
                     }
                 }
             }
         }
     }
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onDrag(InventoryDragEvent event) {
-        if (!(event.getWhoClicked() instanceof Player)) {
+        if (!(event.getWhoClicked() instanceof Player player)) {
             return;
         }
 
-        Player player = (Player) event.getWhoClicked();
+        VaultViewInfo info = PlayerVaults.getInstance().getInVault().get(player.getUniqueId().toString());
+        if (info == null) {
+            return;
+        }
 
-        Inventory clickedInventory = event.getInventory();
-        if (clickedInventory != null) {
-            VaultViewInfo info = PlayerVaults.getInstance().getInVault().get(player.getUniqueId().toString());
-            if (info != null) {
-                int num = info.getNumber();
-                String inventoryTitle = event.getView().getTitle();
-                String title = this.plugin.getVaultTitle(String.valueOf(num));
-                if ((inventoryTitle != null && inventoryTitle.equalsIgnoreCase(title)) && event.getNewItems() != null) {
-                    if (!player.hasPermission(Permission.BYPASS_BLOCKED_ITEMS)) {
-                        for (ItemStack item : event.getNewItems().values()) {
-                            if (this.isBlocked(player, item, info)) {
-                                event.setCancelled(true);
-                                return;
-                            }
-                        }
-                    }
+        Inventory top = event.getView().getTopInventory();
+        if (!(top.getHolder() instanceof VaultHolder)) {
+            return;
+        }
+
+        if (VaultNavigation.isEnabled()) {
+            for (int slot : event.getRawSlots()) {
+                if (slot < top.getSize() && VaultNavigation.isNavigationSlot(slot, top.getSize())) {
+                    event.setCancelled(true);
+                    return;
+                }
+            }
+        }
+
+        if (!player.hasPermission(Permission.BYPASS_BLOCKED_ITEMS) && event.getNewItems() != null) {
+            for (Map.Entry<Integer, ItemStack> entry : event.getNewItems().entrySet()) {
+                if (entry.getKey() < top.getSize() && VaultNavigation.isNavigationSlot(entry.getKey(), top.getSize())) {
+                    event.setCancelled(true);
+                    return;
+                }
+                if (this.isBlocked(player, entry.getValue(), info)) {
+                    event.setCancelled(true);
+                    return;
                 }
             }
         }

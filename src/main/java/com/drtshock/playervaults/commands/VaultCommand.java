@@ -21,6 +21,7 @@ package com.drtshock.playervaults.commands;
 import com.drtshock.playervaults.PlayerVaults;
 import com.drtshock.playervaults.util.Permission;
 import com.drtshock.playervaults.vaultmanagement.VaultManager;
+import com.drtshock.playervaults.vaultmanagement.VaultMenuManager;
 import com.drtshock.playervaults.vaultmanagement.VaultOperations;
 import com.drtshock.playervaults.vaultmanagement.VaultViewInfo;
 import org.bukkit.Bukkit;
@@ -46,12 +47,20 @@ public class VaultCommand implements CommandExecutor {
         }
 
         if (sender instanceof Player player) {
-            if (PlayerVaults.getInstance().getInVault().containsKey(player.getUniqueId().toString())) {
-                // don't let them open another vault.
+            if (PlayerVaults.getInstance().getInVault().containsKey(player.getUniqueId().toString())
+                    || PlayerVaults.getInstance().isInVaultMenu(player.getUniqueId())) {
+                return true;
+            }
+
+            if (!player.hasPermission(Permission.COMMANDS_USE)) {
+                this.plugin.getTL().noPerms().title().send(sender);
                 return true;
             }
 
             switch (args.length) {
+                case 0:
+                    VaultMenuManager.openMenu(player);
+                    break;
                 case 1:
                     if (VaultOperations.openOwnVault(player, args[0], true)) {
                         PlayerVaults.getInstance().getInVault().put(player.getUniqueId().toString(), new VaultViewInfo(player.getUniqueId().toString(), Integer.parseInt(args[0])));

@@ -171,6 +171,12 @@ public class Translation {
         this.cleanupMiniMessup(this.translations.blockedItemWithoutModelData);
         this.cleanupMiniMessup(this.translations.blockedItemWithEnchantments);
         this.cleanupMiniMessup(this.translations.signsDisabled);
+        this.cleanupMiniMessup(this.translations.vaultRowMigrated);
+        this.cleanupMiniMessup(this.translations.vaultMenuNamePrompt);
+        this.cleanupMiniMessup(this.translations.vaultMenuNameSet);
+        this.cleanupMiniMessup(this.translations.vaultMenuNameCancelled);
+        this.cleanupMiniMessup(this.translations.vaultMenuIconSet);
+        this.cleanupMiniMessup(this.translations.vaultMenuReset);
         this.cleanupMiniMessup(this.placeholders.title);
         for (Map.Entry<String, String> entry : this.colorMappings.entrySet()) {
             if (entry.getValue().contains("§")) {
@@ -225,7 +231,13 @@ public class Translation {
         private TL convertComplete = TL.of("<normal>Converted <info><count></info> players to PlayerVaults.");
         private TL convertBackground = TL.of("<normal>Conversion has been forked to the background. See console for updates.");
         private TL locked = TL.of("<error>Vaults are currently locked while conversion occurs. Please try again in a moment!");
-        private TL help = TL.of("/pv <number>");
+        private TL help = TL.of("<normal>/pv <info>opens the vault menu or a vault</info>");
+        private TL vaultRowMigrated = TL.of("<gold><count> item(s) from your old bottom row were dropped nearby because vault navigation now uses that row.");
+        private TL vaultMenuNamePrompt = TL.of("<normal>Type a new name in chat for vault <info><vault></info>. Use <info>reset</info> for default or <info>cancel</info>.");
+        private TL vaultMenuNameSet = TL.of("<normal>Updated vault <info><vault></info> name.");
+        private TL vaultMenuNameCancelled = TL.of("<normal>Vault rename cancelled.");
+        private TL vaultMenuIconSet = TL.of("<normal>Updated vault <info><vault></info> icon.");
+        private TL vaultMenuReset = TL.of("<normal>Reset vault <info><vault></info> icon and name.");
         private TL blockedItem = TL.of("<gold><item></gold> <error>is blocked from vaults.");
         private TL blockedItemWithModelData = TL.of("<error>This item is blocked from vaults.");
         private TL blockedItemWithoutModelData = TL.of("<error>This item is blocked from vaults.");
@@ -355,6 +367,30 @@ public class Translation {
 
     public @NonNull TL help() {
         return this.translations.help;
+    }
+
+    public @NonNull TL vaultRowMigrated() {
+        return this.translations.vaultRowMigrated;
+    }
+
+    public @NonNull TL vaultMenuNamePrompt() {
+        return this.translations.vaultMenuNamePrompt;
+    }
+
+    public @NonNull TL vaultMenuNameSet() {
+        return this.translations.vaultMenuNameSet;
+    }
+
+    public @NonNull TL vaultMenuNameCancelled() {
+        return this.translations.vaultMenuNameCancelled;
+    }
+
+    public @NonNull TL vaultMenuIconSet() {
+        return this.translations.vaultMenuIconSet;
+    }
+
+    public @NonNull TL vaultMenuReset() {
+        return this.translations.vaultMenuReset;
     }
 
     public @NonNull TL blockedItem() {

@@ -30,12 +30,15 @@ import com.drtshock.playervaults.config.file.Config;
 import com.drtshock.playervaults.config.file.Translation;
 import com.drtshock.playervaults.listeners.Listeners;
 import com.drtshock.playervaults.listeners.SignListener;
+import com.drtshock.playervaults.listeners.VaultMenuChatListener;
+import com.drtshock.playervaults.listeners.VaultMenuListener;
 import com.drtshock.playervaults.listeners.VaultPreloadListener;
 import com.drtshock.playervaults.placeholder.Papi;
 import com.drtshock.playervaults.tasks.Cleanup;
 import com.drtshock.playervaults.util.ComponentDispatcher;
 import com.drtshock.playervaults.util.Permission;
 import com.drtshock.playervaults.vaultmanagement.EconomyOperations;
+import com.drtshock.playervaults.vaultmanagement.ItemSerialization;
 import com.drtshock.playervaults.vaultmanagement.VaultManager;
 import com.drtshock.playervaults.vaultmanagement.VaultViewInfo;
 import com.google.gson.Gson;
@@ -61,7 +64,6 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 import dev.kitteh.cardboardbox.CardboardBox;
-import sun.misc.Unsafe;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -84,6 +86,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -119,6 +122,8 @@ public class PlayerVaults extends JavaPlugin {
     private final Config config = new Config();
     private final Translation translation = new Translation(this);
     private final List<String> exceptions = new CopyOnWriteArrayList<>();
+    private final Set<UUID> inVaultMenu = new HashSet<>();
+    private final Map<UUID, Integer> vaultNameEdits = new HashMap<>();
     private String updateCheck;
     private Response updateResponse;
 
@@ -140,12 +145,27 @@ public class PlayerVaults extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        if (!CardboardBox.isReady()) {
-            this.getLogger().log(Level.SEVERE, "Could not initialize!", CardboardBox.getException());
+        instance = this;
+        try {
+            onEnable0();
+        } catch (Throwable t) {
+            this.getLogger().log(Level.SEVERE, "Failed to enable PlayerVaults", t);
+            this.getServer().getPluginManager().disablePlugin(this);
+        }
+    }
+
+    private void onEnable0() {
+        if (!ItemSerialization.isAvailable()) {
+            Exception cardboard = CardboardBox.getException();
+            this.getLogger().log(Level.SEVERE, "Could not initialize item serialization! Vault data cannot be loaded safely.", cardboard);
             this.getServer().getPluginManager().disablePlugin(this);
             return;
         }
-        instance = this;
+        if (!CardboardBox.isReady()) {
+            this.getLogger().warning("CardboardBox failed to initialize"
+                    + (CardboardBox.getException() == null ? "" : (": " + CardboardBox.getException().getMessage()))
+                    + " — using Paper item bytes API instead.");
+        }
         long start = System.currentTimeMillis();
         long time = System.currentTimeMillis();
         UpdateCheck update = new UpdateCheck("PlayerVaultsX", this.getDescription().getVersion(), this.getServer().getName(), this.getServer().getVersion());
@@ -165,6 +185,8 @@ public class PlayerVaults extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new Listeners(this), this);
         getServer().getPluginManager().registerEvents(new VaultPreloadListener(), this);
         getServer().getPluginManager().registerEvents(new SignListener(this), this);
+        getServer().getPluginManager().registerEvents(new VaultMenuListener(this), this);
+        getServer().getPluginManager().registerEvents(new VaultMenuChatListener(this), this);
         debug("registering listeners", time);
         time = System.currentTimeMillis();
         this.backupsEnabled = this.getConf().getStorage().getFlatFile().isBackups();
@@ -173,12 +195,12 @@ public class PlayerVaults extends JavaPlugin {
         debug("loaded signs", time);
         time = System.currentTimeMillis();
         update.spigotId = "%%__USER__%%";
-        getCommand("pv").setExecutor(new VaultCommand(this));
-        getCommand("pvdel").setExecutor(new DeleteCommand(this));
-        getCommand("pvconvert").setExecutor(new ConvertCommand(this));
-        getCommand("pvsign").setExecutor(new SignCommand(this));
-        getCommand("pvhelpme").setExecutor(new HelpMeCommand(this));
-        getCommand("pvconsole").setExecutor(new ConsoleCommand(this));
+        registerCommand("pv", new VaultCommand(this));
+        registerCommand("pvdel", new DeleteCommand(this));
+        registerCommand("pvconvert", new ConvertCommand(this));
+        registerCommand("pvsign", new SignCommand(this));
+        registerCommand("pvhelpme", new HelpMeCommand(this));
+        registerCommand("pvconsole", new ConsoleCommand(this));
         update.meow = this.getClass().getDeclaredMethods().length;
         debug("registered commands", time);
         time = System.currentTimeMillis();
@@ -270,17 +292,20 @@ public class PlayerVaults extends JavaPlugin {
         });
 
         try {
-            Field f = Unsafe.class.getDeclaredField("theUnsafe");
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            Field f = unsafeClass.getDeclaredField("theUnsafe");
             f.setAccessible(true);
-            Unsafe unsafe = (Unsafe) f.get(null);
+            Object unsafe = f.get(null);
 
             Class<?> clazz = Class.forName(this.getServer().getClass().getPackage().getName() + ".util.CraftNBTTagConfigSerializer");
             Field field = clazz.getDeclaredField("INTEGER");
 
-            Pattern pattern = (Pattern) unsafe.getObject(clazz, unsafe.staticFieldOffset(field));
+            long offset = (Long) unsafeClass.getMethod("staticFieldOffset", Field.class).invoke(unsafe, field);
+            Pattern pattern = (Pattern) unsafeClass.getMethod("getObject", Object.class, long.class).invoke(unsafe, clazz, offset);
 
             if (pattern.pattern().equals("[-+]?(?:0|[1-9][0-9]*)?i")) {
-                unsafe.putObject(clazz, unsafe.staticFieldOffset(field), Pattern.compile("[-+]?(?:0|[1-9][0-9]*)i", Pattern.CASE_INSENSITIVE));
+                unsafeClass.getMethod("putObject", Object.class, long.class, Object.class)
+                        .invoke(unsafe, clazz, offset, Pattern.compile("[-+]?(?:0|[1-9][0-9]*)i", Pattern.CASE_INSENSITIVE));
                 this.getLogger().info("Patched Spigot item storage bug.");
             }
         } catch (Exception ignored) {
@@ -332,6 +357,14 @@ public class PlayerVaults extends JavaPlugin {
                 }
             }
         }.runTaskTimerAsynchronously(this, 1, 20 /* ticks */ * 60 /* seconds in a minute */ * 60 /* minutes in an hour*/);
+    }
+
+    private void registerCommand(String name, org.bukkit.command.CommandExecutor executor) {
+        org.bukkit.command.PluginCommand command = getCommand(name);
+        if (command == null) {
+            throw new IllegalStateException("Command '" + name + "' is missing from plugin.yml");
+        }
+        command.setExecutor(executor);
     }
 
     private void metricsLine(String name, Callable<Integer> callable) {
@@ -554,6 +587,31 @@ public class PlayerVaults extends JavaPlugin {
         return this.openInventories;
     }
 
+    public boolean isInVaultMenu(UUID uuid) {
+        return this.inVaultMenu.contains(uuid);
+    }
+
+    public void addInVaultMenu(UUID uuid) {
+        this.inVaultMenu.add(uuid);
+    }
+
+    public void removeInVaultMenu(UUID uuid) {
+        this.inVaultMenu.remove(uuid);
+    }
+
+    public void beginVaultNameEdit(UUID uuid, int vaultNumber) {
+        this.vaultNameEdits.put(uuid, vaultNumber);
+    }
+
+    public void cancelVaultNameEdit(UUID uuid) {
+        this.vaultNameEdits.remove(uuid);
+    }
+
+    public OptionalInt getVaultNameEdit(UUID uuid) {
+        Integer value = this.vaultNameEdits.get(uuid);
+        return value == null ? OptionalInt.empty() : OptionalInt.of(value);
+    }
+
     public boolean isEconomyEnabled() {
         return this.getConf().getEconomy().isEnabled() && this.useVault;
     }
@@ -638,7 +696,8 @@ public class PlayerVaults extends JavaPlugin {
 
     public int getDefaultVaultRows() {
         int def = this.config.getDefaultVaultRows();
-        return (def >= 1 && def <= 6) ? def : 6;
+        def = (def >= 1 && def <= 6) ? def : 6;
+        return com.drtshock.playervaults.vaultmanagement.VaultNavigation.applyMinimumRows(def);
     }
 
     public int getDefaultVaultSize() {

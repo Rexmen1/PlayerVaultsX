@@ -172,8 +172,157 @@ public class Config {
     @Comment("Sets the highest vault amount this plugin will test perms for")
     private int maxVaultAmountPermTest = 99;
 
+    @Comment("""
+            Bottom Row Navigation
+             Uses the bottom row of vault GUIs for quick switching between vault numbers.""")
+    private BottomRowNavigation bottomRowNavigation = new BottomRowNavigation();
+
     @Comment("Storage option. Currently only flatfile, but soon more! :)")
     private Storage storage = new Storage();
+
+    public static class BottomRowNavigation {
+        private boolean enabled = true;
+
+        @Comment("Material for the vault you currently have open")
+        private String currentMaterial = "LIME_STAINED_GLASS_PANE";
+
+        @Comment("Material for vaults you can switch to")
+        private String vaultMaterial = "LIGHT_BLUE_STAINED_GLASS_PANE";
+
+        @Comment("Material for vaults you do not have permission to open")
+        private String lockedMaterial = "GRAY_STAINED_GLASS_PANE";
+
+        @Comment("Material for unused navigation slots")
+        private String fillerMaterial = "BLACK_STAINED_GLASS_PANE";
+
+        @Comment("Display name for the current vault button. Use <vault> for the vault number.")
+        private String currentName = "&aVault &f#<vault> &7(Current)";
+
+        @Comment("Display name for other vault buttons. Use <vault> for the vault number.")
+        private String vaultName = "&bVault &f#<vault>";
+
+        @Comment("Display name for locked vault buttons. Use <vault> for the vault number.")
+        private String lockedName = "&7Vault #<vault>";
+
+        public boolean isEnabled() {
+            return this.enabled;
+        }
+
+        public String getCurrentMaterial() {
+            return this.currentMaterial;
+        }
+
+        public String getVaultMaterial() {
+            return this.vaultMaterial;
+        }
+
+        public String getLockedMaterial() {
+            return this.lockedMaterial;
+        }
+
+        public String getFillerMaterial() {
+            return this.fillerMaterial;
+        }
+
+        public String getCurrentName() {
+            return this.currentName;
+        }
+
+        public String getVaultName() {
+            return this.vaultName;
+        }
+
+        public String getLockedName() {
+            return this.lockedName;
+        }
+    }
+
+    public static class VaultMenu {
+        private boolean enabled = true;
+
+        @Comment("How many vault slots to show in /pv menu (9-54, rounded to rows)")
+        private int slots = 45;
+
+        @Comment("Menu title")
+        private String title = "&8Your Vaults";
+
+        @Comment("Default icon material for vaults without a custom icon")
+        private String defaultIcon = "CHEST";
+
+        @Comment("Icon material for vaults the player cannot access")
+        private String lockedMaterial = "GRAY_STAINED_GLASS_PANE";
+
+        @Comment("Default display name. Use <vault> for the vault number.")
+        private String defaultName = "&fVault #<vault>";
+
+        @Comment("Lore lines for each vault icon. Placeholders: <vault>, <status>")
+        private List<String> lore = new ArrayList<>() {
+            {
+                this.add("&7Status: <status>");
+                this.add("&eLeft-click &7to open");
+                this.add("&eRight-click &7with item to set icon");
+                this.add("&eRight-click &7to rename in chat");
+                this.add("&eShift-right-click &7to reset icon/name");
+            }
+        };
+
+        private String statusHasItems = "&aHas items";
+        private String statusEmpty = "&7Empty";
+        private String lockedLore = "&cNo permission";
+        private String editLore = "";
+
+        public boolean isEnabled() {
+            return this.enabled;
+        }
+
+        public int getSlots() {
+            return this.slots;
+        }
+
+        public String getTitle() {
+            return this.title;
+        }
+
+        public String getDefaultIcon() {
+            return this.defaultIcon;
+        }
+
+        public String getLockedMaterial() {
+            return this.lockedMaterial;
+        }
+
+        public String getDefaultName() {
+            return this.defaultName;
+        }
+
+        public List<String> getLore() {
+            if (this.lore == null) {
+                this.lore = new ArrayList<>();
+            }
+            return Collections.unmodifiableList(this.lore);
+        }
+
+        public String getStatusHasItems() {
+            return this.statusHasItems;
+        }
+
+        public String getStatusEmpty() {
+            return this.statusEmpty;
+        }
+
+        public String getLockedLore() {
+            return this.lockedLore;
+        }
+
+        public String getEditLore() {
+            return this.editLore;
+        }
+    }
+
+    @Comment("""
+            Vault Menu
+             Running /pv with no number opens a menu of your vaults.""")
+    private VaultMenu vaultMenu = new VaultMenu();
 
     public void setFromConfig(Logger l, FileConfiguration c) {
         l.info("Importing old configuration...");
@@ -227,5 +376,13 @@ public class Config {
 
     public Storage getStorage() {
         return this.storage;
+    }
+
+    public BottomRowNavigation getBottomRowNavigation() {
+        return this.bottomRowNavigation;
+    }
+
+    public VaultMenu getVaultMenu() {
+        return this.vaultMenu;
     }
 }
